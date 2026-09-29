@@ -1,0 +1,367 @@
+// MARK: - Static Content
+
+// MARK: Target Dependencies
+
+extension Target.Dependency {
+    // AWS modules
+    static var AWSClientRuntime: Self { "AWSClientRuntime" }
+    static var AWSSDKCommon: Self { "AWSSDKCommon" }
+    static var AWSSDKEventStreamsAuth: Self { "AWSSDKEventStreamsAuth" }
+    static var AWSSDKHTTPAuth: Self { "AWSSDKHTTPAuth" }
+    static var AWSSDKIdentity: Self { "AWSSDKIdentity" }
+    static var AWSSDKIdentityAPI: Self { "AWSSDKIdentityAPI" }
+    static var AWSSDKChecksums: Self { "AWSSDKChecksums" }
+    static var AWSSDKDynamic: Self { "AWSSDKDynamic" }
+
+    // CRT module
+    static var CRT: Self { .product(name: "AwsCommonRuntimeKit", package: "aws-crt-swift") }
+
+    // Smithy modules
+    static var ClientRuntime: Self { .product(name: "ClientRuntime", package: "smithy-swift") }
+    static var Smithy: Self { .product(name: "Smithy", package: "smithy-swift") }
+    static var SmithyAWSJSON: Self { .product(name: "SmithyAWSJSON", package: "smithy-swift") }
+    static var SmithyRPCv2CBOR: Self { .product(name: "SmithyRPCv2CBOR", package: "smithy-swift") }
+    static var SmithyCBOR: Self { .product(name: "SmithyCBOR", package: "smithy-swift") }
+    static var SmithyChecksumsAPI: Self { .product(name: "SmithyChecksumsAPI", package: "smithy-swift") }
+    static var SmithyChecksums: Self { .product(name: "SmithyChecksums", package: "smithy-swift") }
+    static var SmithyEventStreams: Self { .product(name: "SmithyEventStreams", package: "smithy-swift") }
+    static var SmithyEventStreamsAPI: Self { .product(name: "SmithyEventStreamsAPI", package: "smithy-swift") }
+    static var SmithyEventStreamsAuthAPI: Self { .product(name: "SmithyEventStreamsAuthAPI", package: "smithy-swift") }
+    static var SmithyFormURL: Self { .product(name: "SmithyFormURL", package: "smithy-swift") }
+    static var SmithyHTTPAPI: Self { .product(name: "SmithyHTTPAPI", package: "smithy-swift") }
+    static var SmithyHTTPAuth: Self { .product(name: "SmithyHTTPAuth", package: "smithy-swift") }
+    static var SmithyHTTPAuthAPI: Self { .product(name: "SmithyHTTPAuthAPI", package: "smithy-swift") }
+    static var SmithyIdentity: Self { .product(name: "SmithyIdentity", package: "smithy-swift") }
+    static var SmithyIdentityAPI: Self { .product(name: "SmithyIdentityAPI", package: "smithy-swift") }
+    static var SmithyJSON: Self { .product(name: "SmithyJSON", package: "smithy-swift") }
+    static var SmithyReadWrite: Self { .product(name: "SmithyReadWrite", package: "smithy-swift") }
+    static var SmithyRetries: Self { .product(name: "SmithyRetries", package: "smithy-swift") }
+    static var SmithyRetriesAPI: Self { .product(name: "SmithyRetriesAPI", package: "smithy-swift") }
+    static var SmithyStreams: Self { .product(name: "SmithyStreams", package: "smithy-swift") }
+    static var SmithyTestUtil: Self { .product(name: "SmithyTestUtil", package: "smithy-swift") }
+    static var SmithyTimestamps: Self { .product(name: "SmithyTimestamps", package: "smithy-swift") }
+    static var SmithyWaitersAPI: Self { .product(name: "SmithyWaitersAPI", package: "smithy-swift") }
+    static var SmithyXML: Self { .product(name: "SmithyXML", package: "smithy-swift") }
+}
+
+extension Target.PluginUsage {
+    // Smithy plugins
+    static var SmithyCodeGeneratorPlugin: Self { .plugin(name: "SmithyCodeGeneratorPlugin", package: "smithy-swift") }
+}
+
+// MARK: Base Package
+
+let package = Package(
+    name: "aws-sdk-swift",
+    platforms: [
+        .macOS(.v12),
+        .iOS(.v13),
+        .tvOS(.v13),
+        .watchOS(.v6)
+    ],
+    products:
+        runtimeProducts +
+        serviceProducts,
+    dependencies:
+        dependencies,
+    targets:
+        runtimeTargets +
+        runtimeTestTargets +
+        serviceTargets +
+        serviceTestTargets
+)
+
+// MARK: Products
+
+private var runtimeProducts: [Product] {
+    [
+        "AWSClientRuntime",
+        "AWSSDKCommon",
+        "AWSSDKEventStreamsAuth",
+        "AWSSDKHTTPAuth",
+        "AWSSDKIdentityAPI",
+        "AWSSDKIdentity",
+        "AWSSDKChecksums",
+    ].map { .library(name: $0, targets: [$0]) }
+}
+
+private var serviceProducts: [Product] {
+    selectedServiceClientData.filter { $0.serviceType == .awsServiceClient }.map(productForService(_:))
+}
+
+private func productForService(_ service: ServiceClientData) -> Product {
+    .library(name: service.name, targets: [service.name])
+}
+
+// MARK: Dependencies
+
+private var dependencies: [Package.Dependency] {
+    [smithySwiftDependency, crtDependency, doccDependencyOrNil].compactMap { $0 }
+}
+
+private var smithySwiftDependency: Package.Dependency {
+    let previewPath = "./smithy-swift"
+    let developmentPath = "../smithy-swift"
+    let gitURL = "https://github.com/smithy-lang/smithy-swift"
+    let useLocalDeps = ProcessInfo.processInfo.environment["AWS_SWIFT_SDK_USE_LOCAL_DEPS"] != nil
+    if isPreviewBuild {
+        return .package(path: previewPath)
+    } else if useLocalDeps {
+        return .package(path: developmentPath)
+    } else {
+        return .package(url: gitURL, exact: clientRuntimeVersion)
+    }
+}
+
+private var crtDependency: Package.Dependency {
+    let useCRTFromMain = ProcessInfo.processInfo.environment["AWS_SWIFT_SDK_USE_PRERELEASE_CRT"] != nil
+    return if useCRTFromMain {
+        .package(url: "https://github.com/awslabs/aws-crt-swift", branch: "main")
+    } else {
+        .package(url: "https://github.com/awslabs/aws-crt-swift", from: crtVersion)
+    }
+}
+
+private var doccDependencyOrNil: Package.Dependency? {
+    guard ProcessInfo.processInfo.environment["AWS_SWIFT_SDK_ENABLE_DOCC"] != nil else { return nil }
+    return .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0")
+}
+
+// MARK: Targets
+
+private var runtimeTargets: [Target] {
+    [
+        .target(
+            name: "SDKForSwift",
+            path: "Sources/Core/SDKForSwift",
+            exclude: ["Documentation.docc/SDKForSwift.md"]
+        ),
+        .target(
+            name: "AWSClientRuntime",
+            dependencies: [
+                .CRT,
+                .ClientRuntime,
+                .SmithyIdentityAPI,
+                .SmithyIdentity,
+                .SmithyRetriesAPI,
+                .SmithyRetries,
+                .SmithyTimestamps,
+                .AWSSDKCommon,
+                .AWSSDKHTTPAuth,
+                .AWSSDKChecksums,
+                .AWSSDKDynamic,
+            ],
+            path: "Sources/Core/AWSClientRuntime/Sources/AWSClientRuntime",
+            resources: [
+                .process("Resources"),
+            ]
+        ),
+        .target(
+            name: "AWSSDKCommon",
+            dependencies: [
+                .CRT,
+            ],
+            path: "Sources/Core/AWSSDKCommon/Sources/AWSSDKCommon"
+        ),
+        .target(
+            name: "AWSSDKEventStreamsAuth",
+            dependencies: [
+                .SmithyEventStreamsAPI,
+                .SmithyEventStreamsAuthAPI,
+                .SmithyEventStreams,
+                .CRT,
+                .AWSSDKHTTPAuth,
+            ],
+            path: "Sources/Core/AWSSDKEventStreamsAuth/Sources/AWSSDKEventStreamsAuth"
+        ),
+        .target(
+            name: "AWSSDKHTTPAuth",
+            dependencies: [
+                .CRT,
+                .Smithy,
+                .SmithyHTTPAuth,
+                .AWSSDKIdentityAPI,
+                .AWSSDKChecksums,
+            ],
+            path: "Sources/Core/AWSSDKHTTPAuth/Sources/AWSSDKHTTPAuth"
+        ),
+        .target(
+            name: "AWSSDKIdentityAPI",
+            dependencies: [
+                .Smithy,
+                .SmithyIdentityAPI,
+            ],
+            path: "Sources/Core/AWSSDKIdentityAPI/Sources/AWSSDKIdentityAPI"
+        ),
+        .target(
+            name: "AWSSDKIdentity",
+            dependencies: [
+                .AWSSDKIdentityAPI,
+                .Smithy,
+                .ClientRuntime,
+                .SmithyIdentity,
+                .SmithyIdentityAPI,
+                .SmithyHTTPAPI,
+                .AWSSDKCommon,
+            ] + internalClientDependencies,
+            path: "Sources/Core/AWSSDKIdentity/Sources/AWSSDKIdentity"
+        ),
+        .target(
+            name: "AWSSDKChecksums",
+            dependencies: [
+                .CRT,
+                .Smithy,
+                .SmithyChecksums,
+                .SmithyHTTPAPI,
+            ],
+            path: "Sources/Core/AWSSDKChecksums/Sources/AWSSDKChecksums"
+        ),
+        .target(
+            name: "AWSSDKDynamic",
+            path: "Sources/Core/AWSSDKDynamic/Sources/AWSSDKDynamic"
+        ),
+    ] + internalServiceTargets
+}
+
+private var internalClientDependencies: [Target.Dependency] {
+    serviceClientData.filter { $0.serviceType == .internalUse }.map { .byNameItem(name: $0.name, condition: nil) }
+}
+
+private var internalServiceTargets: [Target] {
+    serviceClientData.filter { $0.serviceType == .internalUse }.map(target(_:))
+}
+
+private var runtimeTestTargets: [Target] {
+    if excludeRuntimeUnitTests { return [] }
+    if let batch, batch.number != 0 { return [] } // only run these tests with batch 0 if batching
+    return [
+        .testTarget(
+            name: "AWSClientRuntimeTests",
+            dependencies: [
+                .AWSClientRuntime,
+                .ClientRuntime,
+                .SmithyTestUtil,
+                .AWSSDKCommon,
+                .AWSSDKIdentity,
+            ],
+            path: "Sources/Core/AWSClientRuntime/Tests/AWSClientRuntimeTests",
+            resources: [.process("Resources")]
+        ),
+        .testTarget(
+            name: "AWSSDKEventStreamsAuthTests",
+            dependencies: [
+                .AWSSDKEventStreamsAuth,
+                .AWSClientRuntime,
+                .AWSSDKIdentity,
+                .SmithyStreams,
+                .SmithyTestUtil,
+            ],
+            path: "Sources/Core/AWSSDKEventStreamsAuth/Tests/AWSSDKEventStreamsAuthTests"
+        ),
+        .testTarget(
+            name: "AWSSDKHTTPAuthTests",
+            dependencies: [
+                .AWSSDKHTTPAuth,
+                .AWSClientRuntime,
+                .AWSSDKEventStreamsAuth,
+                .CRT,
+                .SmithyTestUtil,
+            ],
+            path: "Sources/Core/AWSSDKHTTPAuth/Tests/AWSSDKHTTPAuthTests"
+        ),
+        .testTarget(
+            name: "AWSSDKIdentityTests",
+            dependencies: [
+                .AWSSDKIdentity,
+                .Smithy,
+                .SmithyIdentity,
+            ],
+            path: "Sources/Core/AWSSDKIdentity/Tests/AWSSDKIdentityTests",
+            resources: [.process("Resources")]
+        ),
+    ]
+}
+
+private var serviceTargets: [Target] {
+    selectedServiceClientData.filter { $0.serviceType == .awsServiceClient }.map(target(_:))
+}
+
+private func target(_ service: ServiceClientData) -> Target {
+    .target(name: service.name, dependencies: service.dependencies, path: service.sourcePath, plugins: [.SmithyCodeGeneratorPlugin])
+}
+
+private var serviceTestTargets: [Target] {
+    guard ProcessInfo.processInfo.environment["AWS_SWIFT_SDK_ENABLE_SERVICE_TESTS"] != nil else { return [] }
+    return selectedServiceClientData.filter { $0.serviceType == .awsServiceClient }.map(unitTestTarget(_:))
+}
+
+private func unitTestTarget(_ service: ServiceClientData) -> Target {
+    let testName = "\(service.name)Tests"
+    let modelName = URL(fileURLWithPath: service.modelPath).lastPathComponent
+    return .testTarget(
+        name: "\(testName)",
+        dependencies: [
+            .byName(name: service.name),
+            .ClientRuntime,
+            .AWSClientRuntime,
+            .SmithyTestUtil,
+        ],
+        path: "codegen/sdk-codegen/build/smithyprojections/sdk-codegen/\(modelName)/swift-codegen/\(service.name)/Tests/\(testName)"
+    )
+}
+
+private var selectedServiceClientData: [ServiceClientData] {
+    if let batch {
+        // If batching, select services to include, batching by their index
+        return serviceClientData.enumerated().filter { $0.offset % batch.total == batch.number }.map { $0.element }
+    } else {
+        // If not batching, select all services
+        return serviceClientData
+    }
+}
+
+private var batch: Batch? {
+    let env = ProcessInfo.processInfo.environment
+    guard let numberString = env["AWS_SWIFT_SDK_BATCH_NUMBER"],
+          let totalString = env["AWS_SWIFT_SDK_BATCH_TOTAL"],
+          let number = Int(numberString),
+          let total = Int(totalString),
+          number >= 0 && number < total
+        else { return nil }
+    return Batch(number: number, total: total)
+}
+
+private struct Batch {
+    let number: Int
+    let total: Int
+}
+
+// As of Swift 6.2, @unchecked is not needed, but for Swift 6.0 it is
+private struct ServiceClientData: @unchecked Sendable {
+
+    enum ServiceType {
+        case awsServiceClient
+        case internalUse
+    }
+
+    let name: String
+    let modelPath: String
+    let dependencies: [Target.Dependency]
+    let serviceType: ServiceType
+
+    init(_ name: String, _ modelPath: String, _ dependencies: [Target.Dependency], _ serviceType: ServiceType = .awsServiceClient) {
+        self.name = name
+        self.modelPath = modelPath
+        self.dependencies = dependencies
+        self.serviceType = serviceType
+    }
+
+    var sourcePath: String {
+        switch serviceType {
+        case .awsServiceClient:
+            return "Sources/Services/\(name)/Sources/\(name)"
+        case .internalUse:
+            return "Sources/Core/AWSSDKIdentity/InternalClients/\(name)/Sources/\(name)"
+        }
+    }
+}

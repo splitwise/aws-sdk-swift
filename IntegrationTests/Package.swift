@@ -1,0 +1,132 @@
+// swift-tools-version:5.9
+
+//
+// Copyright Amazon.com Inc. or its affiliates.
+// All Rights Reserved.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+
+import PackageDescription
+
+// MARK: - Target dependencies
+
+extension Target.Dependency {
+    // Test utility module
+    static var awsIntegrationTestUtils: Self { "AWSIntegrationTestUtils" }
+
+    // AWS modules
+    static var awsClientRuntime: Self { .product(name: "AWSClientRuntime", package: "aws-sdk-swift") }
+    static var awsSDKCommon: Self { .product(name: "AWSSDKCommon", package: "aws-sdk-swift") }
+    static var awsSDKIdentityAPI: Self { .product(name: "AWSSDKIdentityAPI", package: "aws-sdk-swift") }
+    static var awsSDKIdentity: Self { .product(name: "AWSSDKIdentity", package: "aws-sdk-swift") }
+
+    // Smithy modules
+    static var clientRuntime: Self { .product(name: "ClientRuntime", package: "smithy-swift") }
+    static var smithyIdentity: Self { .product(name: "SmithyIdentity", package: "smithy-swift") }
+    static var smithyTestUtil: Self { .product(name: "SmithyTestUtil", package: "smithy-swift") }
+    static var smithyHttpApi: Self { .product(name: "SmithyHTTPAPI", package: "smithy-swift") }
+}
+
+// MARK: - Base Package
+
+let package = Package(
+    name: "aws-sdk-swift-integration-tests",
+    platforms: [
+        .macOS(.v12),
+        .iOS(.v13),
+        .tvOS(.v13),
+        .watchOS(.v6)
+    ],
+    dependencies: {
+        var deps: [Package.Dependency] = [
+            .package(path: "../../smithy-swift"),
+            .package(path: "../../aws-sdk-swift"),
+        ]
+        #if swift(>=5.10)
+        deps.append(contentsOf: [
+            .package(url: "https://github.com/smithy-lang/smithy-swift-opentelemetry.git", from: "2.0.0"),
+            .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core", from: "2.3.0"),
+        ])
+        #endif
+        return deps
+    }(),
+    targets: integrationTestTargets
+)
+
+private var integrationTestTargets: [Target] {
+    let integrationTests = [
+        "AWSCloudFrontKeyValueStore",
+        "AWSDynamoDB",
+        "AWSEC2",
+        "AWSECS",
+        "AWSKinesis",
+        "AWSMediaConvert",
+        "AWSRoute53",
+        "AWSS3",
+        "AWSSQS",
+        "AWSSTS",
+        "AWSTranscribeStreaming",
+        "AWSCognitoIdentity",
+        "AWSBedrockRuntime",
+        "AWSCloudWatch",
+    ].map { integrationTestTarget($0) }
+    return integrationTests + [.target(name: "AWSIntegrationTestUtils", dependencies: [.clientRuntime], path: "./AWSIntegrationTestUtils")]
+}
+
+private func integrationTestTarget(_ name: String) -> Target {
+    let integrationTestName = "\(name)IntegrationTests"
+    var additionalDependencies: [String] = []
+    var exclusions: [String] = []
+    var platformSpecificDependencies: [Target.Dependency] = []
+    switch name {
+    case "AWSEC2":
+        additionalDependencies = ["AWSIAM", "AWSSTS", "AWSCloudWatchLogs"]
+        exclusions = [
+            "Resources/IMDSIntegTestApp"
+        ]
+    case "AWSECS":
+        additionalDependencies = ["AWSCloudWatchLogs", "AWSEC2",  "AWSIAM", "AWSSTS"]
+        exclusions = [
+            "README.md",
+            "Resources/ECSIntegTestApp/"
+        ]
+    case "AWSS3":
+        additionalDependencies = ["AWSSSOAdmin", "AWSS3Control", "AWSSTS"]
+    case "AWSCloudFrontKeyValueStore":
+        additionalDependencies = ["AWSCloudFront"]
+    case "AWSSTS":
+        additionalDependencies = ["AWSIAM", "AWSCognitoIdentity"]
+        #if swift(>=5.10)
+        platformSpecificDependencies = [
+            .product(name: "SmithyOpenTelemetry", package: "smithy-swift-opentelemetry"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+        ]
+        #endif
+    case "AWSCognitoIdentity":
+        additionalDependencies = ["AWSSTS", "AWSIAM"]
+    default:
+        break
+    }
+    return .testTarget(
+        name: integrationTestName,
+        dependencies: [
+            .clientRuntime,
+            .awsClientRuntime,
+            .smithyTestUtil,
+            .awsSDKIdentity,
+            .awsSDKIdentityAPI,
+            .smithyIdentity,
+            .awsSDKCommon,
+            .awsIntegrationTestUtils,
+            .smithyHttpApi,
+            .product(name: name, package: "aws-sdk-swift")
+        ] + additionalDependencies.map {
+            Target.Dependency.product(name: $0, package: "aws-sdk-swift", condition: nil)
+        } + platformSpecificDependencies,
+        path: "./Services/\(integrationTestName)",
+        exclude: exclusions,
+        resources: [.process("Resources")]
+    )
+}
+

@@ -1,0 +1,353 @@
+package software.amazon.smithy.aws.swift.codegen
+import io.kotest.matchers.string.shouldContainOnlyOnce
+import org.junit.jupiter.api.Test
+import software.amazon.smithy.aws.swift.codegen.protocols.awsjson.AWSJSON1_0ProtocolGenerator
+import software.amazon.smithy.aws.swift.codegen.protocols.restxml.RestXMLProtocolGenerator
+import software.amazon.smithy.aws.traits.protocols.RestJson1Trait
+import software.amazon.smithy.swift.codegen.core.GenerationContext
+import software.amazon.smithy.swift.codegen.integration.ProtocolGenerator
+
+class PresignerGeneratorTests {
+    @Test
+    fun `001 presignable on getFooInput`() {
+        val context = setupTests("awsjson/presignable.smithy", "smithy.swift.traits#Example")
+        val contents = TestUtils.getFileContents(context.manifest, "Example/Sources/Example/models/GetFooInput+Presigner.swift")
+        contents.shouldSyntacticSanityCheck()
+        val expectedContents = """
+extension GetFooInput {
+    public func presign(config: ExampleClient.ExampleClientConfig, expiration: Foundation.TimeInterval) async throws -> SmithyHTTPAPI.HTTPRequest? {
+        let serviceName = "example"
+        let input = self
+        let client: (SmithyHTTPAPI.HTTPRequest, Smithy.Context) async throws -> SmithyHTTPAPI.HTTPResponse = { (_, _) in
+            throw Smithy.ClientError.unknownError("No HTTP client configured for presigned request")
+        }
+        var config = config
+        let plugins: [any ClientRuntime.Plugin] = [SmithyAWSJSON.Plugin(), AWSClientRuntime.UnknownAWSHTTPServiceErrorPlugin()]
+        for plugin in plugins {
+            try await plugin.configureClient(clientConfiguration: &config)
+        }
+        let operation = ExampleClient.getFooOperation
+        let context = Smithy.ContextBuilder()
+                      .withMethod(value: .post)
+                      .withServiceName(value: serviceName)
+                      .withOperation(value: "getFoo")
+                      .withUnsignedPayloadTrait(value: false)
+                      .withSmithyDefaultConfig(config)
+                      .withFlowType(value: .PRESIGN_REQUEST)
+                      .withExpiration(value: expiration)
+                      .withIdentityResolver(value: config.awsCredentialIdentityResolver, schemeID: "aws.auth#sigv4a")
+                      .withRegion(value: config.region)
+                      .withRequestChecksumCalculation(value: config.requestChecksumCalculation)
+                      .withResponseChecksumValidation(value: config.responseChecksumValidation)
+                      .withSigningName(value: "example-signing-name")
+                      .withSigningRegion(value: config.signingRegion)
+                      .withOperationProperties(value: operation)
+                      .build()
+        let clientProtocol = SmithyAWSJSON.HTTPClientProtocol(version: .v1_0)
+        let builder = ClientRuntime.OrchestratorBuilder(operation, clientProtocol)
+        config.interceptorProviders.forEach { provider in
+            builder.interceptors.add(provider.create())
+        }
+        config.httpInterceptorProviders.forEach { provider in
+            builder.interceptors.add(provider.create())
+        }
+        builder.interceptors.add(ClientRuntime.URLHostMiddleware<GetFooInput, GetFooOutput>())
+        builder.interceptors.add(ClientRuntime.ContentLengthMiddleware<GetFooInput, GetFooOutput>())
+        builder.interceptors.add(ClientRuntime.LoggerMiddleware<GetFooInput, GetFooOutput>(clientLogMode: config.clientLogMode))
+        builder.clockSkewProvider(AWSClientRuntime.AWSClockSkewProvider.provider())
+        builder.applySigner(ClientRuntime.SignerMiddleware<GetFooOutput>())
+        let endpointParamsBlock = { (context: Smithy.Context) in
+            EndpointParams()
+        }
+        builder.applyEndpoint(AWSClientRuntime.AWSEndpointResolverMiddleware<GetFooOutput, EndpointParams>(paramsBlock: endpointParamsBlock, resolverBlock: { [config] in try config.endpointResolver.resolve(params: $0) }))
+        builder.interceptors.add(ClientRuntime.MutateHeadersMiddleware<GetFooInput, GetFooOutput>(overrides: ["X-Amz-Target": "Example.GetFoo"]))
+        builder.interceptors.add(ClientRuntime.ContentTypeMiddleware<GetFooInput, GetFooOutput>(contentType: "application/x-amz-json-1.0"))
+        builder.selectAuthScheme(ClientRuntime.AuthSchemeMiddleware<GetFooOutput>())
+        builder.interceptors.add(AWSClientRuntime.UserAgentMiddleware<GetFooInput, GetFooOutput>(serviceID: serviceName, version: ExampleClient.version, config: config))
+        var metricsAttributes = Smithy.Attributes()
+        metricsAttributes.set(key: ClientRuntime.OrchestratorMetricsAttributesKeys.service, value: "Example")
+        metricsAttributes.set(key: ClientRuntime.OrchestratorMetricsAttributesKeys.method, value: "GetFoo")
+        let op = builder.attributes(context)
+            .telemetry(ClientRuntime.OrchestratorTelemetry(
+                telemetryProvider: config.telemetryProvider,
+                metricsAttributes: metricsAttributes,
+                meterScope: serviceName,
+                tracerScope: serviceName
+            ))
+            .executeRequest(client)
+            .build()
+        return try await op.presignRequest(input: input)
+    }
+
+    @available(*, deprecated, message: "Use presign(config: ExampleClient.ExampleClientConfig, expiration:) instead")
+    public func presign(config: ExampleClient.ExampleClientConfiguration, expiration: Foundation.TimeInterval) async throws -> SmithyHTTPAPI.HTTPRequest? {
+        return try await self.presign(config: config.toSendable(), expiration: expiration)
+    }
+}
+"""
+        contents.shouldContainOnlyOnce(expectedContents)
+    }
+
+    @Test
+    fun `002 presignable on postFooInput`() {
+        val context = setupTests("awsjson/presignable.smithy", "smithy.swift.traits#Example")
+        val contents = TestUtils.getFileContents(context.manifest, "Example/Sources/Example/models/PostFooInput+Presigner.swift")
+        contents.shouldSyntacticSanityCheck()
+        val expectedContents = """
+extension PostFooInput {
+    public func presign(config: ExampleClient.ExampleClientConfig, expiration: Foundation.TimeInterval) async throws -> SmithyHTTPAPI.HTTPRequest? {
+        let serviceName = "example"
+        let input = self
+        let client: (SmithyHTTPAPI.HTTPRequest, Smithy.Context) async throws -> SmithyHTTPAPI.HTTPResponse = { (_, _) in
+            throw Smithy.ClientError.unknownError("No HTTP client configured for presigned request")
+        }
+        var config = config
+        let plugins: [any ClientRuntime.Plugin] = [SmithyAWSJSON.Plugin(), AWSClientRuntime.UnknownAWSHTTPServiceErrorPlugin()]
+        for plugin in plugins {
+            try await plugin.configureClient(clientConfiguration: &config)
+        }
+        let operation = ExampleClient.postFooOperation
+        let context = Smithy.ContextBuilder()
+                      .withMethod(value: .post)
+                      .withServiceName(value: serviceName)
+                      .withOperation(value: "postFoo")
+                      .withUnsignedPayloadTrait(value: false)
+                      .withSmithyDefaultConfig(config)
+                      .withFlowType(value: .PRESIGN_REQUEST)
+                      .withExpiration(value: expiration)
+                      .withIdentityResolver(value: config.awsCredentialIdentityResolver, schemeID: "aws.auth#sigv4a")
+                      .withRegion(value: config.region)
+                      .withRequestChecksumCalculation(value: config.requestChecksumCalculation)
+                      .withResponseChecksumValidation(value: config.responseChecksumValidation)
+                      .withSigningName(value: "example-signing-name")
+                      .withSigningRegion(value: config.signingRegion)
+                      .withOperationProperties(value: operation)
+                      .build()
+        let clientProtocol = SmithyAWSJSON.HTTPClientProtocol(version: .v1_0)
+        let builder = ClientRuntime.OrchestratorBuilder(operation, clientProtocol)
+        config.interceptorProviders.forEach { provider in
+            builder.interceptors.add(provider.create())
+        }
+        config.httpInterceptorProviders.forEach { provider in
+            builder.interceptors.add(provider.create())
+        }
+        builder.interceptors.add(ClientRuntime.URLHostMiddleware<PostFooInput, PostFooOutput>())
+        builder.interceptors.add(ClientRuntime.ContentLengthMiddleware<PostFooInput, PostFooOutput>())
+        builder.interceptors.add(ClientRuntime.LoggerMiddleware<PostFooInput, PostFooOutput>(clientLogMode: config.clientLogMode))
+        builder.clockSkewProvider(AWSClientRuntime.AWSClockSkewProvider.provider())
+        builder.applySigner(ClientRuntime.SignerMiddleware<PostFooOutput>())
+        let endpointParamsBlock = { (context: Smithy.Context) in
+            EndpointParams()
+        }
+        builder.applyEndpoint(AWSClientRuntime.AWSEndpointResolverMiddleware<PostFooOutput, EndpointParams>(paramsBlock: endpointParamsBlock, resolverBlock: { [config] in try config.endpointResolver.resolve(params: $0) }))
+        builder.interceptors.add(ClientRuntime.MutateHeadersMiddleware<PostFooInput, PostFooOutput>(overrides: ["X-Amz-Target": "Example.PostFoo"]))
+        builder.interceptors.add(ClientRuntime.ContentTypeMiddleware<PostFooInput, PostFooOutput>(contentType: "application/x-amz-json-1.0"))
+        builder.selectAuthScheme(ClientRuntime.AuthSchemeMiddleware<PostFooOutput>())
+        builder.interceptors.add(AWSClientRuntime.UserAgentMiddleware<PostFooInput, PostFooOutput>(serviceID: serviceName, version: ExampleClient.version, config: config))
+        var metricsAttributes = Smithy.Attributes()
+        metricsAttributes.set(key: ClientRuntime.OrchestratorMetricsAttributesKeys.service, value: "Example")
+        metricsAttributes.set(key: ClientRuntime.OrchestratorMetricsAttributesKeys.method, value: "PostFoo")
+        let op = builder.attributes(context)
+            .telemetry(ClientRuntime.OrchestratorTelemetry(
+                telemetryProvider: config.telemetryProvider,
+                metricsAttributes: metricsAttributes,
+                meterScope: serviceName,
+                tracerScope: serviceName
+            ))
+            .executeRequest(client)
+            .build()
+        return try await op.presignRequest(input: input)
+    }
+
+    @available(*, deprecated, message: "Use presign(config: ExampleClient.ExampleClientConfig, expiration:) instead")
+    public func presign(config: ExampleClient.ExampleClientConfiguration, expiration: Foundation.TimeInterval) async throws -> SmithyHTTPAPI.HTTPRequest? {
+        return try await self.presign(config: config.toSendable(), expiration: expiration)
+    }
+}
+"""
+        contents.shouldContainOnlyOnce(expectedContents)
+    }
+
+    @Test
+    fun `003 presignable on putFooInput`() {
+        val context = setupTests("awsjson/presignable.smithy", "smithy.swift.traits#Example")
+        val contents = TestUtils.getFileContents(context.manifest, "Example/Sources/Example/models/PutFooInput+Presigner.swift")
+        contents.shouldSyntacticSanityCheck()
+        val expectedContents = """
+extension PutFooInput {
+    public func presign(config: ExampleClient.ExampleClientConfig, expiration: Foundation.TimeInterval) async throws -> SmithyHTTPAPI.HTTPRequest? {
+        let serviceName = "example"
+        let input = self
+        let client: (SmithyHTTPAPI.HTTPRequest, Smithy.Context) async throws -> SmithyHTTPAPI.HTTPResponse = { (_, _) in
+            throw Smithy.ClientError.unknownError("No HTTP client configured for presigned request")
+        }
+        var config = config
+        let plugins: [any ClientRuntime.Plugin] = [SmithyAWSJSON.Plugin(), AWSClientRuntime.UnknownAWSHTTPServiceErrorPlugin()]
+        for plugin in plugins {
+            try await plugin.configureClient(clientConfiguration: &config)
+        }
+        let operation = ExampleClient.putFooOperation
+        let context = Smithy.ContextBuilder()
+                      .withMethod(value: .post)
+                      .withServiceName(value: serviceName)
+                      .withOperation(value: "putFoo")
+                      .withUnsignedPayloadTrait(value: false)
+                      .withSmithyDefaultConfig(config)
+                      .withFlowType(value: .PRESIGN_REQUEST)
+                      .withExpiration(value: expiration)
+                      .withIdentityResolver(value: config.awsCredentialIdentityResolver, schemeID: "aws.auth#sigv4a")
+                      .withRegion(value: config.region)
+                      .withRequestChecksumCalculation(value: config.requestChecksumCalculation)
+                      .withResponseChecksumValidation(value: config.responseChecksumValidation)
+                      .withSigningName(value: "example-signing-name")
+                      .withSigningRegion(value: config.signingRegion)
+                      .withOperationProperties(value: operation)
+                      .build()
+        let clientProtocol = SmithyAWSJSON.HTTPClientProtocol(version: .v1_0)
+        let builder = ClientRuntime.OrchestratorBuilder(operation, clientProtocol)
+        config.interceptorProviders.forEach { provider in
+            builder.interceptors.add(provider.create())
+        }
+        config.httpInterceptorProviders.forEach { provider in
+            builder.interceptors.add(provider.create())
+        }
+        builder.interceptors.add(ClientRuntime.URLHostMiddleware<PutFooInput, PutFooOutput>())
+        builder.interceptors.add(ClientRuntime.ContentLengthMiddleware<PutFooInput, PutFooOutput>())
+        builder.interceptors.add(ClientRuntime.LoggerMiddleware<PutFooInput, PutFooOutput>(clientLogMode: config.clientLogMode))
+        builder.clockSkewProvider(AWSClientRuntime.AWSClockSkewProvider.provider())
+        builder.applySigner(ClientRuntime.SignerMiddleware<PutFooOutput>())
+        let endpointParamsBlock = { (context: Smithy.Context) in
+            EndpointParams()
+        }
+        builder.applyEndpoint(AWSClientRuntime.AWSEndpointResolverMiddleware<PutFooOutput, EndpointParams>(paramsBlock: endpointParamsBlock, resolverBlock: { [config] in try config.endpointResolver.resolve(params: $0) }))
+        builder.interceptors.add(ClientRuntime.MutateHeadersMiddleware<PutFooInput, PutFooOutput>(overrides: ["X-Amz-Target": "Example.PutFoo"]))
+        builder.interceptors.add(ClientRuntime.ContentTypeMiddleware<PutFooInput, PutFooOutput>(contentType: "application/x-amz-json-1.0"))
+        builder.selectAuthScheme(ClientRuntime.AuthSchemeMiddleware<PutFooOutput>())
+        builder.interceptors.add(AWSClientRuntime.UserAgentMiddleware<PutFooInput, PutFooOutput>(serviceID: serviceName, version: ExampleClient.version, config: config))
+        var metricsAttributes = Smithy.Attributes()
+        metricsAttributes.set(key: ClientRuntime.OrchestratorMetricsAttributesKeys.service, value: "Example")
+        metricsAttributes.set(key: ClientRuntime.OrchestratorMetricsAttributesKeys.method, value: "PutFoo")
+        let op = builder.attributes(context)
+            .telemetry(ClientRuntime.OrchestratorTelemetry(
+                telemetryProvider: config.telemetryProvider,
+                metricsAttributes: metricsAttributes,
+                meterScope: serviceName,
+                tracerScope: serviceName
+            ))
+            .executeRequest(client)
+            .build()
+        return try await op.presignRequest(input: input)
+    }
+
+    @available(*, deprecated, message: "Use presign(config: ExampleClient.ExampleClientConfig, expiration:) instead")
+    public func presign(config: ExampleClient.ExampleClientConfiguration, expiration: Foundation.TimeInterval) async throws -> SmithyHTTPAPI.HTTPRequest? {
+        return try await self.presign(config: config.toSendable(), expiration: expiration)
+    }
+}
+"""
+        contents.shouldContainOnlyOnce(expectedContents)
+    }
+
+    @Test
+    fun `004 presignable on S3`() {
+        val context = setupTests("presign-urls-s3.smithy", "com.amazonaws.s3#AmazonS3", RestXMLProtocolGenerator())
+        val contents = TestUtils.getFileContents(context.manifest, "Example/Sources/Example/models/PutObjectInput+Presigner.swift")
+        contents.shouldSyntacticSanityCheck()
+        val expectedContents = """
+extension PutObjectInput {
+    public func presign(config: S3Client.S3ClientConfig, expiration: Foundation.TimeInterval) async throws -> SmithyHTTPAPI.HTTPRequest? {
+        let serviceName = "S3"
+        let input = self
+        let client: (SmithyHTTPAPI.HTTPRequest, Smithy.Context) async throws -> SmithyHTTPAPI.HTTPResponse = { (_, _) in
+            throw Smithy.ClientError.unknownError("No HTTP client configured for presigned request")
+        }
+        let context = Smithy.ContextBuilder()
+                      .withMethod(value: .put)
+                      .withServiceName(value: serviceName)
+                      .withOperation(value: "putObject")
+                      .withUnsignedPayloadTrait(value: false)
+                      .withSmithyDefaultConfig(config)
+                      .withFlowType(value: .PRESIGN_REQUEST)
+                      .withExpiration(value: expiration)
+                      .withIdentityResolver(value: config.awsCredentialIdentityResolver, schemeID: "aws.auth#sigv4a")
+                      .withIdentityResolver(value: config.s3ExpressIdentityResolver, schemeID: "aws.auth#sigv4-s3express")
+                      .withRegion(value: config.region)
+                      .withRequestChecksumCalculation(value: config.requestChecksumCalculation)
+                      .withResponseChecksumValidation(value: config.responseChecksumValidation)
+                      .withSigningName(value: "s3")
+                      .withSigningRegion(value: config.signingRegion)
+                      .withSigV4aSigningRegionSet(value: config.sigV4aSigningRegionSet)
+                      .withClientConfig(value: config as ClientRuntime.DefaultClientConfiguration)
+                      .build()
+        let builder = ClientRuntime.OrchestratorBuilder<PutObjectInput, PutObjectOutput, SmithyHTTPAPI.HTTPRequest, SmithyHTTPAPI.HTTPResponse>()
+        config.interceptorProviders.forEach { provider in
+            builder.interceptors.add(provider.create())
+        }
+        config.httpInterceptorProviders.forEach { provider in
+            builder.interceptors.add(provider.create())
+        }
+        builder.interceptors.add(ClientRuntime.URLPathMiddleware<PutObjectInput, PutObjectOutput>(PutObjectInput.urlPathProvider(_:)))
+        builder.interceptors.add(ClientRuntime.URLHostMiddleware<PutObjectInput, PutObjectOutput>())
+        builder.interceptors.add(ClientRuntime.ContentTypeMiddleware<PutObjectInput, PutObjectOutput>(contentType: "application/xml"))
+        builder.serialize(ClientRuntime.BodyMiddleware<PutObjectInput, PutObjectOutput, SmithyXML.Writer>(rootNodeInfo: "PutObjectInput", inputWritingClosure: PutObjectInput.write(value:to:)))
+        builder.interceptors.add(ClientRuntime.ContentLengthMiddleware<PutObjectInput, PutObjectOutput>())
+        builder.deserialize(ClientRuntime.DeserializeMiddleware<PutObjectOutput>(PutObjectOutput.httpOutput(from:), PutObjectOutputError.httpError(from:)))
+        builder.interceptors.add(ClientRuntime.LoggerMiddleware<PutObjectInput, PutObjectOutput>(clientLogMode: config.clientLogMode))
+        builder.clockSkewProvider(AWSClientRuntime.AWSClockSkewProvider.provider())
+        builder.applySigner(ClientRuntime.SignerMiddleware<PutObjectOutput>())
+        let endpointParamsBlock = { (context: Smithy.Context) in
+            EndpointParams()
+        }
+        context.set(key: Smithy.AttributeKey<EndpointParams>(name: "EndpointParams"), value: endpointParamsBlock(context))
+        builder.applyEndpoint(AWSClientRuntime.AWSEndpointResolverMiddleware<PutObjectOutput, EndpointParams>(paramsBlock: endpointParamsBlock, resolverBlock: { [config] in try config.endpointResolver.resolve(params: $0) }))
+        builder.selectAuthScheme(ClientRuntime.AuthSchemeMiddleware<PutObjectOutput>())
+        builder.interceptors.add(AWSClientRuntime.UserAgentMiddleware<PutObjectInput, PutObjectOutput>(serviceID: serviceName, version: S3Client.version, config: config))
+        var metricsAttributes = Smithy.Attributes()
+        metricsAttributes.set(key: ClientRuntime.OrchestratorMetricsAttributesKeys.service, value: "S3")
+        metricsAttributes.set(key: ClientRuntime.OrchestratorMetricsAttributesKeys.method, value: "PutObject")
+        let op = builder.attributes(context)
+            .telemetry(ClientRuntime.OrchestratorTelemetry(
+                telemetryProvider: config.telemetryProvider,
+                metricsAttributes: metricsAttributes,
+                meterScope: serviceName,
+                tracerScope: serviceName
+            ))
+            .executeRequest(client)
+            .build()
+        return try await op.presignRequest(input: input)
+    }
+
+    @available(*, deprecated, message: "Use presign(config: S3Client.S3ClientConfig, expiration:) instead")
+    public func presign(config: S3Client.S3ClientConfiguration, expiration: Foundation.TimeInterval) async throws -> SmithyHTTPAPI.HTTPRequest? {
+        return try await self.presign(config: config.toSendable(), expiration: expiration)
+    }
+}
+"""
+        contents.shouldContainOnlyOnce(expectedContents)
+    }
+
+    private fun setupTests(
+        smithyFile: String,
+        serviceShapeId: String,
+        generator: ProtocolGenerator = AWSJSON1_0ProtocolGenerator(),
+    ): TestContext {
+        val context = TestUtils.executeDirectedCodegen(smithyFile, serviceShapeId, RestJson1Trait.ID)
+        val presigner = PresignerGenerator()
+        val codegenContext =
+            GenerationContext(context.ctx.model, context.ctx.symbolProvider, context.ctx.settings, context.manifest, generator)
+        val protocolGenerationContext =
+            ProtocolGenerator.GenerationContext(
+                context.ctx.settings,
+                context.ctx.model,
+                context.ctx.service,
+                context.ctx.symbolProvider,
+                listOf(),
+                generator.protocol,
+                context.ctx.delegator,
+            )
+        codegenContext.protocolGenerator?.initializeMiddleware(context.ctx)
+        presigner.writeAdditionalFiles(codegenContext, protocolGenerationContext, context.ctx.delegator)
+        context.ctx.delegator.flushWriters()
+        return context
+    }
+}

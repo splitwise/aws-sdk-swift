@@ -1,0 +1,96 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
+ */
+
+package software.amazon.smithy.aws.swift.codegen
+
+import software.amazon.smithy.aws.swift.codegen.customization.RulesBasedAuthSchemeResolverGenerator
+import software.amazon.smithy.aws.swift.codegen.customization.s3.isS3
+import software.amazon.smithy.aws.swift.codegen.swiftmodules.AWSClientRuntimeTypes
+import software.amazon.smithy.aws.swift.codegen.swiftmodules.AWSSDKEventStreamsAuthTypes
+import software.amazon.smithy.codegen.core.Symbol
+import software.amazon.smithy.model.shapes.OperationShape
+import software.amazon.smithy.model.shapes.ServiceShape
+import software.amazon.smithy.swift.codegen.AuthSchemeResolverGenerator
+import software.amazon.smithy.swift.codegen.SwiftWriter
+import software.amazon.smithy.swift.codegen.endpoints.EndpointParamsGenerator
+import software.amazon.smithy.swift.codegen.endpoints.EndpointResolverGenerator
+import software.amazon.smithy.swift.codegen.integration.DefaultHTTPProtocolCustomizations
+import software.amazon.smithy.swift.codegen.integration.HttpProtocolServiceClient
+import software.amazon.smithy.swift.codegen.integration.ProtocolGenerator
+import software.amazon.smithy.swift.codegen.integration.ServiceConfig
+import software.amazon.smithy.swift.codegen.integration.SmokeTestGenerator
+import software.amazon.smithy.swift.codegen.model.isInputEventStream
+import software.amazon.smithy.swift.codegen.model.isOutputEventStream
+import software.amazon.smithy.swift.codegen.swiftmodules.ClientRuntimeTypes
+
+abstract class AWSHTTPProtocolCustomizations : DefaultHTTPProtocolCustomizations() {
+    override fun renderContextAttributes(
+        ctx: ProtocolGenerator.GenerationContext,
+        writer: SwiftWriter,
+        serviceShape: ServiceShape,
+        op: OperationShape,
+    ) {
+        // FIXME handle indentation properly or do swift formatting after the fact
+        val config = AWSServiceConfig(writer, ctx)
+        if (config.serviceSpecificConfigProperties().any { it.memberName == "accountIdEndpointMode" }) {
+            writer.write("  .withAccountIDEndpointMode(value: config.accountIdEndpointMode)")
+        }
+        writer.write("  .withIdentityResolver(value: config.awsCredentialIdentityResolver, schemeID: \$S)", "aws.auth#sigv4a")
+        if (ctx.service.isS3) {
+            writer.write("  .withIdentityResolver(value: config.s3ExpressIdentityResolver, schemeID: \$S)", "aws.auth#sigv4-s3express")
+        }
+        writer.write("  .withRegion(value: config.region)")
+        writer.write("  .withRequestChecksumCalculation(value: config.requestChecksumCalculation)")
+        writer.write("  .withResponseChecksumValidation(value: config.responseChecksumValidation)")
+        if (AWSAuthUtils.hasSigV4AuthScheme(ctx.model, ctx.service, op)) {
+            val signingName = AWSAuthUtils.signingServiceName(serviceShape)
+            writer.write("  .withSigningName(value: \$S)", signingName)
+            writer.write("  .withSigningRegion(value: config.signingRegion)")
+        }
+        if (AWSAuthUtils.serviceUsesSigV4A(ctx)) {
+            writer.write("  .withSigV4aSigningRegionSet(value: config.sigV4aSigningRegionSet)")
+        }
+        if (ctx.service.isS3) {
+            // this is used in S3 Express
+            writer.write("  .withClientConfig(value: config as \$N)", ClientRuntimeTypes.Core.DefaultClientConfiguration)
+        }
+    }
+
+    override fun renderEventStreamAttributes(
+        ctx: ProtocolGenerator.GenerationContext,
+        writer: SwiftWriter,
+        op: OperationShape,
+    ) {
+        if (op.isInputEventStream(ctx.model) && op.isOutputEventStream(ctx.model)) {
+            writer.write("\$N(context: context)", AWSSDKEventStreamsAuthTypes.setupBidirectionalStreaming)
+        }
+    }
+
+    override fun renderInternals(ctx: ProtocolGenerator.GenerationContext) {
+        AuthSchemeResolverGenerator().render(ctx)
+        // Generate rules-based auth scheme resolver for services that depend on endpoint resolver for auth scheme resolution
+        if (AuthSchemeResolverGenerator.usesRulesBasedAuthResolver(ctx)) {
+            RulesBasedAuthSchemeResolverGenerator().render(ctx)
+        }
+        EndpointParamsGenerator(ctx).render()
+        EndpointResolverGenerator(
+            partitionDefinition = AWSClientRuntimeTypes.Core.AWSPartitionDefinition,
+        ).render(ctx)
+    }
+
+    override fun serviceClient(
+        ctx: ProtocolGenerator.GenerationContext,
+        writer: SwiftWriter,
+        serviceConfig: ServiceConfig,
+    ): HttpProtocolServiceClient = AWSHttpProtocolServiceClient(ctx, writer, serviceConfig)
+
+    override val endpointMiddlewareSymbol: Symbol = AWSClientRuntimeTypes.Core.AWSEndpointResolverMiddleware
+
+    override val unknownServiceErrorSymbol: Symbol = AWSClientRuntimeTypes.Core.UnknownAWSHTTPServiceError
+
+    override val queryCompatibleUtilsSymbol: Symbol = ClientRuntimeTypes.AWSQuery.QueryCompatibleUtils
+
+    override fun smokeTestGenerator(ctx: ProtocolGenerator.GenerationContext): SmokeTestGenerator = AWSSmokeTestGenerator(ctx)
+}
